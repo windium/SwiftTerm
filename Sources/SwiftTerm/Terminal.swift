@@ -2113,6 +2113,8 @@ open class Terminal {
                 resetBufferLine (y: j)
             }
             updateRange (0)
+            // Notify delegate that scrollback may have changed
+            tdel?.scrolled(source: self, yDisp: buffer.yDisp)
         case 3:
             // Clear scrollback (everything not in viewport)
             let scrollBackSize = buffer.lines.count - rows
@@ -2121,6 +2123,8 @@ open class Terminal {
                 buffer.linesTop = 0
                 buffer.yBase = max (buffer.yBase - scrollBackSize, 0)
                 buffer.yDisp = max (buffer.yDisp - scrollBackSize, 0)
+                // Notify delegate that scrollback was cleared
+                tdel?.scrolled(source: self, yDisp: buffer.yDisp)
             }
             break;
         default:

@@ -1129,23 +1129,64 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         if rangeToDelete.isEmpty {
             // If there is no selected text, delete the character before the cursor
 
-            // No delete past the beginning of the text
+            // FIX: Always send backspace to server, even if textInputStorage is empty
+            // This handles the case where server has echoed characters back
             if rangeStartIndex == 0 {
-                uitiLog("deleteBackward() no text to delete")
+                uitiLog("deleteBackward() textInputStorage empty, checking terminal buffer")
+                
+                // Try to read the character from the terminal buffer at cursor position
+                let cursorX = terminal.buffer.x
+                let cursorY = terminal.buffer.y + terminal.buffer.yDisp
+                
+                if cursorX > 0 && cursorY < terminal.buffer.lines.count {
+                    let line = terminal.buffer.lines[cursorY]
+                    if cursorX <= line.count {
+                        // Get the character before the cursor
+                        let charData = line[cursorX - 1]
+                        let char = charData.getCharacter()
+                        
+                        // Count UTF-8 bytes for this character
+                        let utf8Count = String(char).utf8.count
+                        uitiLog("deleteBackward() found char '\(char)' with \(utf8Count) UTF-8 bytes")
+                        
+                        // Send the correct number of backspaces
+                        for _ in 0..<utf8Count {
+                            self.send ([0x7f])
+                        }
+                        inputDelegate?.selectionDidChange(self)
+                        return
+                    }
+                }
+                
+                // Fallback: send a single backspace
+                self.send ([0x7f])
+                inputDelegate?.selectionDidChange(self)
                 return
             }
 
             rangeStartIndex -= 1
-            textInputStorage.remove(at: textInputStorage.index(textInputStorage.startIndex, offsetBy: rangeStartIndex))
+            let charIndex = textInputStorage.index(textInputStorage.startIndex, offsetBy: rangeStartIndex)
+            let charToDelete = textInputStorage[charIndex]
+            textInputStorage.remove(at: charIndex)
             rangeStartPosition = TextPosition(offset: rangeStartIndex)
 
-            self.send ([0x7f])
+            // FIX: Send the correct number of backspaces for multi-byte UTF-8 characters
+            let utf8Count = String(charToDelete).utf8.count
+            for _ in 0..<utf8Count {
+                self.send ([0x7f])
+            }
         } else {
             // Send as many backspaces that are in the range to delete. When on auto-repeat, after a some time
             // pressing the backspace, it will delete chunks of text at a time.
             let oldText = textInputStorage[rangeToDelete.fullRange(in: textInputStorage)]
-            let backspaces = oldText.count
-            for _ in 0..<backspaces {
+            
+            // FIX: Count UTF-8 bytes instead of Swift characters
+            var totalBackspaces = 0
+            for char in oldText {
+                totalBackspaces += String(char).utf8.count
+            }
+            
+            for _ in 0..<totalBackspaces {
                 self.send ([0x7f])
             }
 

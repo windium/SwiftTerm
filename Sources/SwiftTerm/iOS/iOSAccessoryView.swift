@@ -168,6 +168,16 @@ public class TerminalAccessory: UIInputView, UIInputViewAudioFeedback {
         touchButton.isSelected = !(terminalView?.allowMouseReporting ?? false)
     }
 
+    @objc func pasteClipboard (_ sender: UIButton) {
+        #if os(iOS)
+        UIDevice.current.playInputClick()
+        #endif
+        if let clipboardString = UIPasteboard.general.string {
+            let data = [UInt8](clipboardString.utf8)
+            terminalView?.send(data)
+        }
+    }
+
     var leftViews: [UIView] = []
     var floatViews: [UIView] = []
     var rightViews: [UIView] = []
@@ -206,9 +216,7 @@ public class TerminalAccessory: UIInputView, UIInputViewAudioFeedback {
         rightViews.append(makeAutoRepeatButton ("arrow.up", #selector(up)))
         rightViews.append(makeAutoRepeatButton ("arrow.down", #selector(down)))
         rightViews.append(makeAutoRepeatButton ("arrow.right", #selector(right)))
-        touchButton = makeButton ("", #selector(toggleTouch), icon: "hand.draw", isNormal: false)
-        touchButton.isSelected = terminalView?.allowMouseReporting ?? false
-        rightViews.append (touchButton)
+        rightViews.append(makeButton ("", #selector(pasteClipboard), icon: "doc.on.clipboard", isNormal: false))
         keyboardButton = makeButton ("", #selector(toggleInputKeyboard), icon: "keyboard.chevron.compact.down", isNormal: false)
         rightViews.append (keyboardButton)
 
