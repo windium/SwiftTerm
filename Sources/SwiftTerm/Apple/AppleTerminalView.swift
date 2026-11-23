@@ -672,6 +672,18 @@ extension TerminalView {
             let lineInfo = buildAttributedString(row: row, line: line, cols: terminal.cols)
             let ctline = CTLineCreateWithAttributedString(lineInfo.attrStr)
 
+            // Two passes per line: all run backgrounds first, then all glyphs. A wide (CJK) glyph
+            // comes from a fallback font, so CoreText gives it its own run, and its right half
+            // overflows into the next cell, which belongs to the next run. Painting each run's
+            // background just before its glyphs covered that half of the previous glyph.
+            struct LineRun {
+                let font: TTFont
+                let glyphs: [CGGlyph]
+                var positions: [CGPoint]
+                let attributes: [NSAttributedString.Key: Any]
+                let col: Int
+            }
+            var lineRuns: [LineRun] = []
             var col = 0
             for run in CTLineGetGlyphRuns(ctline) as? [CTRun] ?? [] {
                 let runGlyphsCount = CTRunGetGlyphCount(run)
@@ -683,9 +695,18 @@ extension TerminalView {
                     count = runGlyphsCount
                 }
 
-                var positions = runGlyphs.enumerated().map { (i: Int, glyph: CGGlyph) -> CGPoint in
+                let positions = runGlyphs.enumerated().map { (i: Int, glyph: CGGlyph) -> CGPoint in
                     CGPoint(x: lineOrigin.x + (cellDimension.width * CGFloat(col + i)), y: lineOrigin.y + yOffset)
                 }
+                lineRuns.append(LineRun(font: runFont, glyphs: runGlyphs, positions: positions, attributes: runAttributes, col: col))
+                col += runGlyphsCount
+            }
+
+            for lineRun in lineRuns {
+                let runAttributes = lineRun.attributes
+                let runGlyphsCount = lineRun.glyphs.count
+                guard runGlyphsCount > 0 else { continue }
+                let col = lineRun.col
 
                 var backgroundColor: TTColor?
                 if runAttributes.keys.contains(.selectionBackgroundColor) {
@@ -702,7 +723,7 @@ extension TerminalView {
                     context.setLineWidth(0)
                     context.setFillColor(backgroundColor.cgColor)
 
-                    let transform = CGAffineTransform (translationX: positions[0].x, y: 0)
+                    let transform = CGAffineTransform (translationX: lineRun.positions[0].x, y: 0)
 
                     var size = CGSize (width: CGFloat (cellDimension.width * CGFloat(runGlyphsCount)), height: cellDimension.height)
                     var origin: CGPoint = lineOrigin
@@ -729,6 +750,11 @@ extension TerminalView {
                     #endif
                     context.restoreGState()
                 }
+            }
+
+            for var lineRun in lineRuns {
+                let runAttributes = lineRun.attributes
+                guard !lineRun.glyphs.isEmpty else { continue }
 
                 nativeForegroundColor.set()
 
@@ -741,12 +767,10 @@ extension TerminalView {
                     context.setFillColor(cgColor)
                 }
                 
-                CTFontDrawGlyphs(runFont, runGlyphs, &positions, positions.count, context)
+                CTFontDrawGlyphs(lineRun.font, lineRun.glyphs, &lineRun.positions, lineRun.positions.count, context)
 
                 // Draw other attributes
-                drawRunAttributes(runAttributes, glyphPositions: positions, in: context)
-
-                col += runGlyphsCount
+                drawRunAttributes(runAttributes, glyphPositions: lineRun.positions, in: context)
             }
 
             // Render any sixel content last
