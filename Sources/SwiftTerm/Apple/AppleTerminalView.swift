@@ -426,8 +426,10 @@ extension TerminalView {
             }
             
             let code = ch.code
-            let notWide = code <= 0xa0 || (code > 0x452 && code < 0x1100) || Wcwidth.scalarSize(Int(code)) < 2
-            if notWide  {
+            // The cell's own width decides, not the code: characters outside the BMP (most emoji)
+            // are stored as atoms, so their code is not a scalar and Wcwidth would call them narrow.
+            // The spacer cell after them would then be drawn on its own, with its inverted background.
+            if ch.width < 2 {
                 str.append(code == 0 ? " " : ch.getCharacter ())
             } else {
                 // If we have a wide character, we flush the contents we have so far
