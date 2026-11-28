@@ -201,12 +201,15 @@ public class TerminalAccessory: UIInputView, UIInputViewAudioFeedback {
         if useSmall {
             leftViews.append(makeButton("", #selector(esc), icon: "escape", isNormal: false))
             let controlButton = makeButton("", #selector(ctrl), icon: "control", isNormal: false)
+            controlButton.isSelected = controlModifier
             leftViews.append(controlButton)
             self.controlButton = controlButton
             leftViews.append(makeButton("", #selector(tab), icon: "arrow.right.to.line.compact"))
         } else {
             leftViews.append(makeButton ("esc", #selector(esc), isNormal: false))
             let controlButton = makeButton ("ctrl", #selector(ctrl), isNormal: false)
+            // setupUI runs again on every bounds change: the new button shows the latch as it is.
+            controlButton.isSelected = controlModifier
             leftViews.append(controlButton)
             self.controlButton = controlButton
             leftViews.append(makeButton("", #selector(tab), icon: "arrow.right.to.line.compact", isNormal: false))

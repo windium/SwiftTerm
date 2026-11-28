@@ -1368,7 +1368,13 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
                 } else if key.modifierFlags.contains (.alternate) && optionAsMetaKey {
                     data = .text("\u{1b}\(key.charactersIgnoringModifiers)")
                 } else if !key.modifierFlags.contains (.command){
-                    if key.characters.count > 0 {
+                    if terminalAccessory?.controlModifier ?? false, !key.charactersIgnoringModifiers.isEmpty {
+                        // The key bar's sticky ctrl applies to the next hardware key too, as it does to
+                        // the soft keyboard (insertText): send the control code and release the latch.
+                        let control = applyControlToEventCharacters (key.charactersIgnoringModifiers)
+                        data = control.isEmpty ? .text (key.characters) : .bytes (control)
+                        terminalAccessory?.controlModifier = false
+                    } else if key.characters.count > 0 {
                         data = .text (key.characters)
                     }
                 }

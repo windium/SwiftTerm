@@ -319,11 +319,17 @@ class SelectionService: CustomDebugStringConvertible {
      */
     func simpleScanSelection (from position: Position, in buffer: Buffer, includeFunc: (Character)-> Bool)
     {
+        // A wide character's spacer cell counts as that character, so a word of CJK characters
+        // is selected whole instead of stopping at the first spacer.
+        func character (at col: Int) -> Character {
+            let p = Position (col: col, row: position.row)
+            return buffer.getChar(atBufferRelative: leadCell (of: p, in: buffer)).getCharacter()
+        }
         // Look backward
         var colScan = position.col
         var left = colScan
         while colScan >= 0 {
-            let ch = buffer.getChar(atBufferRelative: Position (col: colScan, row: position.row)).getCharacter()
+            let ch = character (at: colScan)
             if !includeFunc (ch) {
                 break
             }
@@ -336,7 +342,7 @@ class SelectionService: CustomDebugStringConvertible {
         var right = colScan
         let limit = terminal.cols
         while colScan < limit {
-            let ch = buffer.getChar(atBufferRelative: Position (col: colScan, row: position.row)).getCharacter()
+            let ch = character (at: colScan)
             if !includeFunc (ch) {
                 break
             }
@@ -476,6 +482,24 @@ class SelectionService: CustomDebugStringConvertible {
         return result
     }
     /**
+     * A double-width character fills two cells: the character itself (width 2) and an empty
+     * spacer cell after it. True when `position` is such a spacer (the right half of the glyph).
+     */
+    func isWideSpacer (_ position: Position, in buffer: Buffer) -> Bool {
+        guard position.col > 0, position.row >= 0, position.row < buffer.lines.count else {
+            return false
+        }
+        return buffer.getChar (atBufferRelative: position).code == 0 &&
+            buffer.getChar (atBufferRelative: Position (col: position.col - 1, row: position.row)).width > 1
+    }
+
+    /// A position on a wide character's spacer moves to the character's own cell, so selecting or
+    /// copying there takes the whole character instead of the empty spacer.
+    func leadCell (of position: Position, in buffer: Buffer) -> Position {
+        isWideSpacer (position, in: buffer) ? Position (col: position.col - 1, row: position.row) : position
+    }
+
+    /**
      * Implements the behavior to select the word at the specified position or an expression
      * which is a balanced set parenthesis, braces or brackets
      */
@@ -484,8 +508,8 @@ class SelectionService: CustomDebugStringConvertible {
 //        let position = Position(
 //            col: max (min (uncheckedPosition.col, buffer.cols-1), 0),
 //            row: max (min (uncheckedPosition.row, buffer.rows-1+buffer.yDisp), buffer.yDisp))
-        let position = Position (col: (min (terminal.cols, max (uncheckedPosition.col, 0))),
-                                 row: (max (uncheckedPosition.row, 0)))
+        let position = leadCell (of: Position (col: (min (terminal.cols, max (uncheckedPosition.col, 0))),
+                                               row: (max (uncheckedPosition.row, 0))), in: buffer)
         switch buffer.getChar(atBufferRelative: position).getCharacter() {
         case Character(UnicodeScalar(0)):
             simpleScanSelection (from: position, in: buffer) { ch in ch == nullChar }
@@ -511,6 +535,11 @@ class SelectionService: CustomDebugStringConvertible {
             start = position
             end = position
         }
+        // A selection that ends on a wide character's spacer covers it, so the highlight spans the
+        // whole glyph (getSelectedText leaves the spacer out of the copied text).
+        if isWideSpacer (end, in: buffer) {
+            end = Position (col: end.col + 1, row: end.row)
+        }
         selectionMode = .word
         setActiveAndNotify()
     }
@@ -532,7 +561,12 @@ class SelectionService: CustomDebugStringConvertible {
         } else {
             (end, start)
         }
-        let r = terminal.getText(start: min, end: max)
+        // A selection that starts on the right half of a wide character copies the whole character,
+        // and one that ends just after a spacer does not add it as a trailing space.
+        let buffer = terminal.buffer
+        let lastCell = Position (col: max.col - 1, row: max.row)
+        let end = isWideSpacer (lastCell, in: buffer) ? lastCell : max
+        let r = terminal.getText(start: leadCell (of: min, in: buffer), end: end)
         return r
     }
     

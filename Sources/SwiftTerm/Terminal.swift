@@ -5324,9 +5324,28 @@ open class Terminal {
         return lines
     }
     
+    /// Selected text of one line. Empty cells become spaces, except the spacer cell after a
+    /// double-width character (code 0 after a cell of width 2): it is part of that character, so
+    /// copying "中文" gives "中文", not "中 文 ".
     func translateBufferLineToString (buffer: Buffer, line: Int, start: Int, end: Int) -> String
     {
-        buffer.translateBufferLineToString(lineIndex: line, trimRight: true, startCol: start, endCol: end).replacingOccurrences(of: "\u{0}", with: " ")
+        let bufferLine = buffer.lines [line]
+        var ec = end == -1 ? bufferLine.count : min (end, bufferLine.count)
+        ec = max (start, min (ec, bufferLine.getTrimmedLength ()))
+        var result = ""
+        var col = max (start, 0)
+        while col < ec {
+            let cell = bufferLine [col]
+            if cell.code == 0 {
+                if col == 0 || bufferLine [col - 1].width < 2 {
+                    result.append (" ")
+                }
+            } else {
+                result.append (cell.getCharacter ())
+            }
+            col += 1
+        }
+        return result
     }
 }
 

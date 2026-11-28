@@ -39,6 +39,67 @@ final class SelectionTests: XCTestCase, TerminalDelegate {
 
     }
 
+    func testSelectingRightHalfOfWideCharacterSelectsWholeCharacter ()
+    {
+        let terminal = Terminal(delegate: self, options: TerminalOptions (cols: 10, rows: 10))
+        let selection = SelectionService(terminal: terminal)
+        terminal.feed (text: "a \u{4E2D} b")
+
+        // "中" fills cells 2 and 3: the character, then an empty spacer cell.
+        XCTAssertEqual(terminal.buffer.getChar(atBufferRelative: Position(col: 2, row: 0)).width, 2)
+        XCTAssertEqual(terminal.buffer.getChar(atBufferRelative: Position(col: 3, row: 0)).code, 0)
+
+        selection.selectWordOrExpression(at: Position(col: 3, row: 0), in: terminal.buffer)
+        XCTAssertEqual(selection.start, Position(col: 2, row: 0))
+        // The highlight covers both cells; the copied text is the character alone.
+        XCTAssertEqual(selection.end, Position(col: 4, row: 0))
+        XCTAssertEqual(selection.getSelectedText(), "\u{4E2D}")
+
+        selection.selectWordOrExpression(at: Position(col: 2, row: 0), in: terminal.buffer)
+        XCTAssertEqual(selection.getSelectedText(), "\u{4E2D}")
+    }
+
+    func testSelectionStartingOnWideCharacterSpacerCopiesTheCharacter ()
+    {
+        let terminal = Terminal(delegate: self, options: TerminalOptions (cols: 10, rows: 10))
+        let selection = SelectionService(terminal: terminal)
+        terminal.feed (text: "a \u{4E2D} b")
+
+        // Without the snap the text started at the spacer and the character itself was left out.
+        selection.setSelection(start: Position(col: 3, row: 0), end: Position(col: 6, row: 0))
+        XCTAssertTrue(selection.getSelectedText().hasPrefix("\u{4E2D}"))
+    }
+
+    func testCopyingWideCharactersLeavesOutTheirSpacers ()
+    {
+        let terminal = Terminal(delegate: self, options: TerminalOptions (cols: 10, rows: 10))
+        let selection = SelectionService(terminal: terminal)
+        terminal.feed (text: "\u{4E2D}\u{6587} a")
+
+        // Cells 0-3 hold the two characters and their spacers.
+        selection.setSelection(start: Position(col: 0, row: 0), end: Position(col: 4, row: 0))
+        XCTAssertEqual(selection.getSelectedText(), "\u{4E2D}\u{6587}")
+
+        // An empty cell that is not a spacer still copies as a space.
+        selection.setSelection(start: Position(col: 0, row: 0), end: Position(col: 6, row: 0))
+        XCTAssertEqual(selection.getSelectedText(), "\u{4E2D}\u{6587} a")
+    }
+
+    func testWordSelectionSpansWideCharacters ()
+    {
+        let terminal = Terminal(delegate: self, options: TerminalOptions (cols: 12, rows: 10))
+        let selection = SelectionService(terminal: terminal)
+        terminal.feed (text: "a \u{4E2D}\u{6587}\u{5B57} b")
+
+        // "中文字" fills cells 2-7. A long-press on any of its cells selects the whole word.
+        for col in 2...7 {
+            selection.selectWordOrExpression(at: Position(col: col, row: 0), in: terminal.buffer)
+            XCTAssertEqual(selection.start, Position(col: 2, row: 0))
+            XCTAssertEqual(selection.end, Position(col: 8, row: 0))
+            XCTAssertEqual(selection.getSelectedText(), "\u{4E2D}\u{6587}\u{5B57}")
+        }
+    }
+
 #if os(macOS)
     // Test only on macOS due to differences in how frames are handled on mac and iOS
     func testMouseHitCorrectWhenScrolled()
