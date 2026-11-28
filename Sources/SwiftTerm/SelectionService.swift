@@ -319,11 +319,17 @@ class SelectionService: CustomDebugStringConvertible {
      */
     func simpleScanSelection (from position: Position, in buffer: Buffer, includeFunc: (Character)-> Bool)
     {
+        // A wide character's spacer cell counts as that character, so a word of CJK characters
+        // is selected whole instead of stopping at the first spacer.
+        func character (at col: Int) -> Character {
+            let p = Position (col: col, row: position.row)
+            return buffer.getChar(atBufferRelative: leadCell (of: p, in: buffer)).getCharacter()
+        }
         // Look backward
         var colScan = position.col
         var left = colScan
         while colScan >= 0 {
-            let ch = buffer.getChar(atBufferRelative: Position (col: colScan, row: position.row)).getCharacter()
+            let ch = character (at: colScan)
             if !includeFunc (ch) {
                 break
             }
@@ -336,7 +342,7 @@ class SelectionService: CustomDebugStringConvertible {
         var right = colScan
         let limit = terminal.cols
         while colScan < limit {
-            let ch = buffer.getChar(atBufferRelative: Position (col: colScan, row: position.row)).getCharacter()
+            let ch = character (at: colScan)
             if !includeFunc (ch) {
                 break
             }
